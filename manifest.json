@@ -1,10 +1,10 @@
 {
-	"id": "auto-note-mover",
-	"name": "Auto Note Mover",
-	"version": "1.2.0",
-	"minAppVersion": "0.12.0",
-	"description": "Auto Note Mover will automatically move the active notes to their respective folders according to the rules.",
-	"author": "faru",
-	"authorUrl": "https://github.com/farux/",
+	"id": "auto-note-mover-multi",
+	"name": "Auto Note Mover – Multi Tags",
+	"version": "1.0.0",
+	"minAppVersion": "1.5.0",
+	"description": "Auto move notes based on multiple tags (AND/OR) and title patterns.",
+	"author": "Gleb",
+	"authorUrl": "https://github.com/",
 	"isDesktopOnly": false
 }

@@ -5,6 +5,21 @@ import { FolderSuggest } from 'suggests/file-suggest';
 import { TagSuggest } from 'suggests/tag-suggest';
 import { arrayMove } from 'utils/Utils';
 
+// ============ NEW DATA MODEL ============
+
+export type TagMatchMode = 'any' | 'all';
+
+export interface FolderRule {
+	folder: string; // путь к папке назначения
+
+	tags: string[]; // список тегов, может быть пустым
+	tagMatchMode: TagMatchMode; // "any" - хотя бы один тег, "all" - все теги
+
+	titlePattern?: string; // шаблон для совпадения по заголовку (бывший pattern)
+}
+
+// ============ OLD DATA MODEL (for migration) ============
+
 export interface FolderTagPattern {
 	folder: string;
 	tag: string;
@@ -15,22 +30,29 @@ export interface ExcludedFolder {
 	folder: string;
 }
 
+// ============ SETTINGS ============
+
 export interface AutoNoteMoverSettings {
 	trigger_auto_manual: string;
 	use_regex_to_check_for_tags: boolean;
 	statusBar_trigger_indicator: boolean;
-	folder_tag_pattern: Array<FolderTagPattern>;
 	use_regex_to_check_for_excluded_folder: boolean;
 	excluded_folder: Array<ExcludedFolder>;
+
+	// New rules array
+	rules: FolderRule[];
+
+	// Old field for migration (deprecated)
+	folder_tag_pattern?: Array<FolderTagPattern>;
 }
 
 export const DEFAULT_SETTINGS: AutoNoteMoverSettings = {
 	trigger_auto_manual: 'Automatic',
 	use_regex_to_check_for_tags: false,
 	statusBar_trigger_indicator: true,
-	folder_tag_pattern: [{ folder: '', tag: '', pattern: '' }],
 	use_regex_to_check_for_excluded_folder: false,
 	excluded_folder: [{ folder: '' }],
+	rules: [],
 };
 
 export class AutoNoteMoverSettingTab extends PluginSettingTab {
@@ -50,30 +72,13 @@ export class AutoNoteMoverSettingTab extends PluginSettingTab {
 	}
 
 	add_auto_note_mover_setting(): void {
-		this.containerEl.createEl('h2', { text: 'Auto Note Mover' });
+		this.containerEl.createEl('h2', { text: 'Auto Note Mover – Multi Tags' });
 
 		const descEl = document.createDocumentFragment();
 
 		new Setting(this.containerEl).setDesc(
 			'Auto Note Mover will automatically move the active notes to their respective folders according to the rules.'
 		);
-
-		/* new Setting(this.containerEl)
-			.setName('Auto Note Mover')
-			.setDesc('Enable or disable the Auto Note Mover.')
-			.addToggle((toggle) => {
-				toggle
-					.setValue(this.plugin.settings.enable_auto_note_mover)
-					.onChange(async (use_new_auto_note_mover) => {
-						this.plugin.settings.enable_auto_note_mover = use_new_auto_note_mover;
-						await this.plugin.saveSettings();
-						this.display();
-					});
-			});
-
-		if (!this.plugin.settings.enable_auto_note_mover) {
-			return;
-		} */
 
 		const triggerDesc = document.createDocumentFragment();
 		triggerDesc.append(
@@ -132,8 +137,10 @@ export class AutoNoteMoverSettingTab extends PluginSettingTab {
 		ruleDesc.append(
 			'1. Set the destination folder.',
 			descEl.createEl('br'),
-			'2. Set a tag or title that matches the note you want to move. ',
-			descEl.createEl('strong', { text: 'You can set either the tag or the title. ' }),
+			'2. Set one or more tags and/or a title pattern.',
+			descEl.createEl('br'),
+			descEl.createEl('strong', { text: 'Multiple tags: ' }),
+			'Use "Match any tag" (OR) or "Match all tags" (AND).',
 			descEl.createEl('br'),
 			'3. The rules are checked in order from the top. The notes will be moved to the folder with the ',
 			descEl.createEl('strong', { text: 'first matching rule.' }),
@@ -154,7 +161,6 @@ export class AutoNoteMoverSettingTab extends PluginSettingTab {
 			'" in the frontmatter.'
 		);
 		new Setting(this.containerEl)
-
 			.setName('Add new rule')
 			.setDesc(ruleDesc)
 			.addButton((button: ButtonComponent) => {
@@ -163,109 +169,25 @@ export class AutoNoteMoverSettingTab extends PluginSettingTab {
 					.setButtonText('+')
 					.setCta()
 					.onClick(async () => {
-						this.plugin.settings.folder_tag_pattern.push({
+						this.plugin.settings.rules.push({
 							folder: '',
-							tag: '',
-							pattern: '',
+							tags: [],
+							tagMatchMode: 'any',
+							titlePattern: undefined,
 						});
 						await this.plugin.saveSettings();
 						this.display();
 					});
 			});
 
-		this.plugin.settings.folder_tag_pattern.forEach((folder_tag_pattern, index) => {
-			const settings = this.plugin.settings.folder_tag_pattern;
-			const settingTag = settings.map((e) => e['tag']);
-			const settingPattern = settings.map((e) => e['pattern']);
-			const checkArr = (arr: string[], val: string) => {
-				return arr.some((arrVal) => val === arrVal);
-			};
-
-			const s = new Setting(this.containerEl)
-				.addSearch((cb) => {
-					new FolderSuggest(this.app, cb.inputEl);
-					cb.setPlaceholder('Folder')
-						.setValue(folder_tag_pattern.folder)
-						.onChange(async (newFolder) => {
-							this.plugin.settings.folder_tag_pattern[index].folder = newFolder.trim();
-							await this.plugin.saveSettings();
-						});
-				})
-
-				.addSearch((cb) => {
-					new TagSuggest(this.app, cb.inputEl);
-					cb.setPlaceholder('Tag')
-						.setValue(folder_tag_pattern.tag)
-						.onChange(async (newTag) => {
-							if (this.plugin.settings.folder_tag_pattern[index].pattern) {
-								this.display();
-								return new Notice(`You can set either the tag or the title.`);
-							}
-							if (newTag && checkArr(settingTag, newTag)) {
-								new Notice('This tag is already used.');
-								return;
-							}
-							if (!this.plugin.settings.use_regex_to_check_for_tags) {
-								this.plugin.settings.folder_tag_pattern[index].tag = newTag.trim();
-							} else if (this.plugin.settings.use_regex_to_check_for_tags) {
-								this.plugin.settings.folder_tag_pattern[index].tag = newTag;
-							}
-							await this.plugin.saveSettings();
-						});
-				})
-
-				.addSearch((cb) => {
-					cb.setPlaceholder('Title by regex')
-						.setValue(folder_tag_pattern.pattern)
-						.onChange(async (newPattern) => {
-							if (this.plugin.settings.folder_tag_pattern[index].tag) {
-								this.display();
-								return new Notice(`You can set either the tag or the title.`);
-							}
-
-							if (newPattern && checkArr(settingPattern, newPattern)) {
-								new Notice('This pattern is already used.');
-								return;
-							}
-
-							this.plugin.settings.folder_tag_pattern[index].pattern = newPattern;
-							await this.plugin.saveSettings();
-						});
-				})
-				.addExtraButton((cb) => {
-					cb.setIcon('up-chevron-glyph')
-						.setTooltip('Move up')
-						.onClick(async () => {
-							arrayMove(this.plugin.settings.folder_tag_pattern, index, index - 1);
-							await this.plugin.saveSettings();
-							this.display();
-						});
-				})
-				.addExtraButton((cb) => {
-					cb.setIcon('down-chevron-glyph')
-						.setTooltip('Move down')
-						.onClick(async () => {
-							arrayMove(this.plugin.settings.folder_tag_pattern, index, index + 1);
-							await this.plugin.saveSettings();
-							this.display();
-						});
-				})
-				.addExtraButton((cb) => {
-					cb.setIcon('cross')
-						.setTooltip('Delete')
-						.onClick(async () => {
-							this.plugin.settings.folder_tag_pattern.splice(index, 1);
-							await this.plugin.saveSettings();
-							this.display();
-						});
-				});
-			s.infoEl.remove();
+		// Render each rule
+		this.plugin.settings.rules.forEach((rule, ruleIndex) => {
+			this.renderRule(rule, ruleIndex);
 		});
 
+		// Excluded folders section
 		const useRegexToCheckForExcludedFolder = document.createDocumentFragment();
-		useRegexToCheckForExcludedFolder.append(
-			'If enabled, excluded folder will be checked with regular expressions.'
-		);
+		useRegexToCheckForExcludedFolder.append('If enabled, excluded folder will be checked with regular expressions.');
 
 		new Setting(this.containerEl)
 			.setName('Use regular expressions to check for excluded folder')
@@ -285,7 +207,6 @@ export class AutoNoteMoverSettingTab extends PluginSettingTab {
 			'This takes precedence over the notes movement rules.'
 		);
 		new Setting(this.containerEl)
-
 			.setName('Add Excluded Folder')
 			.setDesc(excludedFolderDesc)
 			.addButton((button: ButtonComponent) => {
@@ -361,6 +282,127 @@ export class AutoNoteMoverSettingTab extends PluginSettingTab {
 					await this.plugin.saveSettings();
 					this.display();
 				});
+			});
+	}
+
+	private renderRule(rule: FolderRule, ruleIndex: number): void {
+		// Create a container for the rule
+		const ruleContainer = this.containerEl.createDiv({ cls: 'auto-note-mover-rule' });
+		ruleContainer.style.border = '1px solid var(--background-modifier-border)';
+		ruleContainer.style.borderRadius = '8px';
+		ruleContainer.style.padding = '12px';
+		ruleContainer.style.marginBottom = '12px';
+
+		// Header with rule number and controls
+		const headerSetting = new Setting(ruleContainer)
+			.setName(`Rule ${ruleIndex + 1}`)
+			.addExtraButton((cb) => {
+				cb.setIcon('up-chevron-glyph')
+					.setTooltip('Move up')
+					.onClick(async () => {
+						arrayMove(this.plugin.settings.rules, ruleIndex, ruleIndex - 1);
+						await this.plugin.saveSettings();
+						this.display();
+					});
+			})
+			.addExtraButton((cb) => {
+				cb.setIcon('down-chevron-glyph')
+					.setTooltip('Move down')
+					.onClick(async () => {
+						arrayMove(this.plugin.settings.rules, ruleIndex, ruleIndex + 1);
+						await this.plugin.saveSettings();
+						this.display();
+					});
+			})
+			.addExtraButton((cb) => {
+				cb.setIcon('cross')
+					.setTooltip('Delete rule')
+					.onClick(async () => {
+						this.plugin.settings.rules.splice(ruleIndex, 1);
+						await this.plugin.saveSettings();
+						this.display();
+					});
+			});
+
+		// Folder input
+		new Setting(ruleContainer)
+			.setName('Destination folder')
+			.addSearch((cb) => {
+				new FolderSuggest(this.app, cb.inputEl);
+				cb.setPlaceholder('Folder')
+					.setValue(rule.folder)
+					.onChange(async (newFolder) => {
+						rule.folder = newFolder.trim();
+						await this.plugin.saveSettings();
+					});
+			});
+
+		// Tag match mode dropdown
+		new Setting(ruleContainer)
+			.setName('Tag match mode')
+			.setDesc('How tags will be combined for this rule')
+			.addDropdown((dd) => {
+				dd.addOption('any', 'Match any tag (OR)');
+				dd.addOption('all', 'Match all tags (AND)');
+
+				dd.setValue(rule.tagMatchMode ?? 'any');
+
+				dd.onChange(async (value: string) => {
+					rule.tagMatchMode = value as TagMatchMode;
+					await this.plugin.saveSettings();
+				});
+			});
+
+		// Tags section header
+		const tagsHeaderEl = ruleContainer.createDiv();
+		tagsHeaderEl.style.marginTop = '8px';
+		new Setting(tagsHeaderEl).setName('Tags').setDesc('Add one or more tags for this rule');
+
+		// Render each tag with remove button
+		rule.tags.forEach((tag, tagIndex) => {
+			new Setting(ruleContainer)
+				.addSearch((cb) => {
+					new TagSuggest(this.app, cb.inputEl);
+					cb.setPlaceholder('#tag')
+						.setValue(tag)
+						.onChange(async (value) => {
+							rule.tags[tagIndex] = value.trim();
+							await this.plugin.saveSettings();
+						});
+				})
+				.addExtraButton((btn) => {
+					btn.setIcon('trash')
+						.setTooltip('Remove tag')
+						.onClick(async () => {
+							rule.tags.splice(tagIndex, 1);
+							await this.plugin.saveSettings();
+							this.display();
+						});
+				});
+		});
+
+		// Add tag button
+		new Setting(ruleContainer).addButton((btn) => {
+			btn.setButtonText('Add tag')
+				.setTooltip('Add new tag for this rule')
+				.onClick(async () => {
+					rule.tags.push('');
+					await this.plugin.saveSettings();
+					this.display();
+				});
+		});
+
+		// Title pattern input
+		new Setting(ruleContainer)
+			.setName('Title pattern')
+			.setDesc('Regular expression for note title (optional)')
+			.addText((text) => {
+				text.setPlaceholder('.*Meeting.*')
+					.setValue(rule.titlePattern ?? '')
+					.onChange(async (value) => {
+						rule.titlePattern = value.trim() || undefined;
+						await this.plugin.saveSettings();
+					});
 			});
 	}
 }

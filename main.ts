@@ -1,5 +1,11 @@
 import { MarkdownView, Plugin, TFile, getAllTags, Notice, TAbstractFile, normalizePath } from 'obsidian';
-import { DEFAULT_SETTINGS, AutoNoteMoverSettings, AutoNoteMoverSettingTab } from 'settings/settings';
+import {
+	DEFAULT_SETTINGS,
+	AutoNoteMoverSettings,
+	AutoNoteMoverSettingTab,
+	FolderRule,
+	FolderTagPattern,
+} from 'settings/settings';
 import { fileMove, getTriggerIndicator, isFmDisable } from 'utils/Utils';
 
 export default class AutoNoteMover extends Plugin {
@@ -7,8 +13,6 @@ export default class AutoNoteMover extends Plugin {
 
 	async onload() {
 		await this.loadSettings();
-		const folderTagPattern = this.settings.folder_tag_pattern;
-		const excludedFolder = this.settings.excluded_folder;
 
 		const fileCheck = (file: TAbstractFile, oldPath?: string, caller?: string) => {
 			if (this.settings.trigger_auto_manual !== 'Automatic' && caller !== 'cmd') {
@@ -22,6 +26,7 @@ export default class AutoNoteMover extends Plugin {
 			}
 
 			// Excluded Folder check
+			const excludedFolder = this.settings.excluded_folder;
 			const excludedFolderLength = excludedFolder.length;
 			for (let i = 0; i < excludedFolderLength; i++) {
 				if (
@@ -46,36 +51,16 @@ export default class AutoNoteMover extends Plugin {
 
 			const fileName = file.basename;
 			const fileFullName = file.basename + '.' + file.extension;
-			const settingsLength = folderTagPattern.length;
-			const cacheTag = getAllTags(fileCache);
+			const cacheTag = getAllTags(fileCache) ?? [];
 
-			// checker
-			for (let i = 0; i < settingsLength; i++) {
-				const settingFolder = folderTagPattern[i].folder;
-				const settingTag = folderTagPattern[i].tag;
-				const settingPattern = folderTagPattern[i].pattern;
-				// Tag check
-				if (!settingPattern) {
-					if (!this.settings.use_regex_to_check_for_tags) {
-						if (cacheTag.find((e) => e === settingTag)) {
-							fileMove(this.app, settingFolder, fileFullName, file);
-							break;
-						}
-					} else if (this.settings.use_regex_to_check_for_tags) {
-						const regex = new RegExp(settingTag);
-						if (cacheTag.find((e) => regex.test(e))) {
-							fileMove(this.app, settingFolder, fileFullName, file);
-							break;
-						}
-					}
-					// Title check
-				} else if (!settingTag) {
-					const regex = new RegExp(settingPattern);
-					const isMatch = regex.test(fileName);
-					if (isMatch) {
-						fileMove(this.app, settingFolder, fileFullName, file);
-						break;
-					}
+			// Check rules
+			for (const rule of this.settings.rules) {
+				const byTags = this.matchesTags(rule, cacheTag, this.settings.use_regex_to_check_for_tags);
+				const byTitle = this.matchesTitle(rule, fileName);
+
+				if (byTags || byTitle) {
+					fileMove(this.app, rule.folder, fileFullName, file);
+					break;
 				}
 			}
 		};
@@ -145,9 +130,101 @@ export default class AutoNoteMover extends Plugin {
 
 	async loadSettings() {
 		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+		this.migrateSettings();
 	}
 
 	async saveSettings() {
 		await this.saveData(this.settings);
+	}
+
+	/**
+	 * Migrate old settings format (folder_tag_pattern with single tag/pattern)
+	 * to new format (rules with tags array and tagMatchMode)
+	 */
+	private migrateSettings(): void {
+		// If rules already exist and have content, no migration needed
+		if (Array.isArray(this.settings.rules) && this.settings.rules.length > 0) {
+			return;
+		}
+
+		const newRules: FolderRule[] = [];
+
+		// Migrate from old folder_tag_pattern array
+		const oldPatterns = this.settings.folder_tag_pattern as FolderTagPattern[] | undefined;
+		if (Array.isArray(oldPatterns)) {
+			for (const old of oldPatterns) {
+				const tags: string[] = [];
+				if (old.tag && typeof old.tag === 'string' && old.tag.trim().length > 0) {
+					tags.push(old.tag.trim());
+				}
+
+				const rule: FolderRule = {
+					folder: old.folder || '',
+					tags,
+					tagMatchMode: 'any',
+					titlePattern: old.pattern && old.pattern.trim() ? old.pattern.trim() : undefined,
+				};
+
+				newRules.push(rule);
+			}
+
+			// Clear old format after migration
+			delete this.settings.folder_tag_pattern;
+		}
+
+		this.settings.rules = newRules;
+
+		// Save migrated settings
+		this.saveSettings();
+	}
+
+	/**
+	 * Check if a rule matches based on tags
+	 */
+	private matchesTags(rule: FolderRule, cacheTag: string[], useRegex: boolean): boolean {
+		if (!rule.tags || rule.tags.length === 0) return false;
+
+		// Filter out empty tags
+		const ruleTags = rule.tags.filter((t) => t && t.trim().length > 0);
+		if (ruleTags.length === 0) return false;
+
+		const matchOne = (pattern: string): boolean => {
+			if (!useRegex) {
+				return cacheTag.includes(pattern);
+			} else {
+				try {
+					const regex = new RegExp(pattern);
+					return cacheTag.some((t: string): boolean => regex.test(t));
+				} catch {
+					// Invalid regex, try exact match
+					return cacheTag.includes(pattern);
+				}
+			}
+		};
+
+		if (rule.tagMatchMode === 'all') {
+			// ALL: every tag must match
+			return ruleTags.every(matchOne);
+		} else {
+			// ANY: at least one tag must match (default)
+			return ruleTags.some(matchOne);
+		}
+	}
+
+	/**
+	 * Check if a rule matches based on title pattern
+	 */
+	private matchesTitle(rule: FolderRule, fileName: string): boolean {
+		if (!rule.titlePattern || rule.titlePattern.trim().length === 0) {
+			return false;
+		}
+
+		try {
+			const regex = new RegExp(rule.titlePattern);
+			return regex.test(fileName);
+		} catch {
+			// Invalid regex
+			return false;
+		}
 	}
 }
