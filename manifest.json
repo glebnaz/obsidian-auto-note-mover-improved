@@ -1,10 +1,10 @@
 {
-	"id": "auto-note-mover-multi",
-	"name": "Auto Note Mover – Multi Tags",
+	"id": "auto-mover-x",
+	"name": "Auto Mover X",
 	"version": "1.0.0",
 	"minAppVersion": "1.5.0",
-	"description": "Auto move notes based on multiple tags (AND/OR) and title patterns.",
-	"author": "Gleb",
-	"authorUrl": "https://github.com/",
+	"description": "Enhanced Auto Note Mover with multi-tag support and batch operations.",
+	"author": "glebnaz",
+	"authorUrl": "https://github.com/glebnaz",
 	"isDesktopOnly": false
 }

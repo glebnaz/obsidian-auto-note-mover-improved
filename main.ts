@@ -1,4 +1,15 @@
-import { MarkdownView, Plugin, TFile, getAllTags, Notice, TAbstractFile, normalizePath } from 'obsidian';
+import {
+	MarkdownView,
+	Plugin,
+	TFile,
+	TFolder,
+	getAllTags,
+	Notice,
+	TAbstractFile,
+	normalizePath,
+	SuggestModal,
+	App,
+} from 'obsidian';
 import {
 	DEFAULT_SETTINGS,
 	AutoNoteMoverSettings,
@@ -7,6 +18,35 @@ import {
 	FolderTagPattern,
 } from 'settings/settings';
 import { fileMove, getTriggerIndicator, isFmDisable } from 'utils/Utils';
+
+// ============ FOLDER SUGGEST MODAL ============
+
+class FolderSuggestModal extends SuggestModal<TFolder> {
+	private folders: TFolder[];
+	private onSelectCallback: (folder: TFolder) => void;
+
+	constructor(app: App, folders: TFolder[], onSelect: (folder: TFolder) => void) {
+		super(app);
+		this.folders = folders;
+		this.onSelectCallback = onSelect;
+		this.setPlaceholder('Select a folder to scan');
+	}
+
+	getSuggestions(query: string): TFolder[] {
+		const q = query.toLowerCase();
+		return this.folders.filter((f) => f.path.toLowerCase().includes(q));
+	}
+
+	renderSuggestion(folder: TFolder, el: HTMLElement): void {
+		el.createEl('div', { text: folder.path || '/' });
+	}
+
+	onChooseSuggestion(folder: TFolder): void {
+		this.onSelectCallback(folder);
+	}
+}
+
+// ============ MAIN PLUGIN CLASS ============
 
 export default class AutoNoteMover extends Plugin {
 	settings: AutoNoteMoverSettings;
@@ -123,6 +163,24 @@ export default class AutoNoteMover extends Plugin {
 			},
 		});
 
+		// New command: Scan folder and move notes
+		this.addCommand({
+			id: 'scan-folder-and-move-notes',
+			name: 'Scan folder and move notes',
+			callback: async () => {
+				await this.promptAndScanFolder();
+			},
+		});
+
+		// New command: Scan folder (dry-run)
+		this.addCommand({
+			id: 'scan-folder-dry-run',
+			name: 'Scan folder (dry-run)',
+			callback: async () => {
+				await this.promptAndScanFolder(true);
+			},
+		});
+
 		this.addSettingTab(new AutoNoteMoverSettingTab(this.app, this));
 	}
 
@@ -226,5 +284,170 @@ export default class AutoNoteMover extends Plugin {
 			// Invalid regex
 			return false;
 		}
+	}
+
+	// ============ SCAN FOLDER FEATURE ============
+
+	/**
+	 * Open folder selection modal and scan selected folder
+	 */
+	private async promptAndScanFolder(dryRun: boolean = false): Promise<void> {
+		const all = this.app.vault.getAllLoadedFiles();
+
+		const folders = all
+			.filter((f): f is TFolder => f instanceof TFolder)
+			.filter((f) => !f.path.startsWith('.obsidian'));
+
+		new FolderSuggestModal(this.app, folders, async (folder) => {
+			await this.scanFolderAndMove(folder, dryRun);
+		}).open();
+	}
+
+	/**
+	 * Recursively collect all markdown files from a folder
+	 */
+	private getMarkdownFilesRecursively(folder: TFolder): TFile[] {
+		const result: TFile[] = [];
+
+		for (const child of folder.children) {
+			if (child instanceof TFile) {
+				if (child.extension === 'md' && !child.path.startsWith('.obsidian')) {
+					result.push(child);
+				}
+			} else if (child instanceof TFolder) {
+				if (!child.path.startsWith('.obsidian')) {
+					result.push(...this.getMarkdownFilesRecursively(child));
+				}
+			}
+		}
+
+		return result;
+	}
+
+	/**
+	 * Scan folder and move notes according to rules
+	 */
+	private async scanFolderAndMove(folder: TFolder, dryRun: boolean = false): Promise<void> {
+		const files = this.getMarkdownFilesRecursively(folder);
+
+		let scanned = 0;
+		let moved = 0;
+		let skipped = 0;
+		const wouldMove: string[] = [];
+
+		for (const file of files) {
+			scanned++;
+
+			try {
+				const result = await this.processFileWithRules(file, dryRun);
+				if (result.matched) {
+					moved++;
+					if (dryRun && result.targetFolder) {
+						wouldMove.push(`${file.path} → ${result.targetFolder}`);
+					}
+				} else {
+					skipped++;
+				}
+			} catch (err) {
+				// Don't crash on single file error
+				console.error('[Auto Note Mover] scan folder error for', file.path, err);
+				skipped++;
+			}
+
+			// Yield every 25 files to prevent UI freeze
+			if (scanned % 25 === 0) {
+				await new Promise((r) => setTimeout(r, 0));
+			}
+		}
+
+		if (dryRun) {
+			new Notice(
+				`[Auto Note Mover] Dry-run complete:\nScanned: ${scanned}\nWould move: ${moved}\nNo match: ${skipped}`
+			);
+			if (wouldMove.length > 0) {
+				console.log('[Auto Note Mover] Dry-run - would move:', wouldMove);
+			}
+		} else {
+			new Notice(`[Auto Note Mover] Scan complete:\nScanned: ${scanned}\nMoved: ${moved}\nSkipped: ${skipped}`);
+		}
+	}
+
+	/**
+	 * Process a single file with all rules
+	 * Returns true if file was moved (or would be moved in dry-run)
+	 */
+	private async processFileWithRules(
+		file: TFile,
+		dryRun: boolean = false
+	): Promise<{ matched: boolean; targetFolder?: string }> {
+		// Skip .obsidian files
+		if (file.path.startsWith('.obsidian')) {
+			return { matched: false };
+		}
+
+		// Check excluded folders
+		const excludedFolder = this.settings.excluded_folder;
+		for (const excluded of excludedFolder) {
+			if (!excluded.folder) continue;
+
+			if (!this.settings.use_regex_to_check_for_excluded_folder) {
+				if (file.parent && file.parent.path === normalizePath(excluded.folder)) {
+					return { matched: false };
+				}
+			} else {
+				try {
+					const regex = new RegExp(excluded.folder);
+					if (file.parent && regex.test(file.parent.path)) {
+						return { matched: false };
+					}
+				} catch {
+					// Invalid regex, skip
+				}
+			}
+		}
+
+		const fileCache = this.app.metadataCache.getFileCache(file);
+		if (!fileCache) {
+			return { matched: false };
+		}
+
+		// Check if disabled in frontmatter
+		if (isFmDisable(fileCache)) {
+			return { matched: false };
+		}
+
+		const cacheTag = getAllTags(fileCache) ?? [];
+		const fileName = file.basename;
+
+		for (const rule of this.settings.rules) {
+			if (!rule.folder) continue;
+
+			// Don't move if already in target folder
+			const targetFolderNormalized = normalizePath(rule.folder);
+			if (file.parent && file.parent.path === targetFolderNormalized) {
+				continue;
+			}
+
+			const byTags = this.matchesTags(rule, cacheTag, this.settings.use_regex_to_check_for_tags);
+			const byTitle = this.matchesTitle(rule, fileName);
+
+			if (byTags || byTitle) {
+				const targetPath = normalizePath(`${rule.folder}/${file.name}`);
+
+				// Don't move if path is the same
+				if (targetPath === file.path) {
+					continue;
+				}
+
+				if (!dryRun) {
+					// Use existing fileMove function for consistency
+					await fileMove(this.app, rule.folder, file.name, file);
+				}
+
+				return { matched: true, targetFolder: rule.folder };
+			}
+		}
+
+		return { matched: false };
 	}
 }

@@ -1,7 +1,7 @@
 {
-	"name": "auto-note-mover",
-	"version": "1.2.0",
-	"description": "Auto Note Mover will automatically move the active notes to their respective folders according to the rules.",
+	"name": "auto-mover-x",
+	"version": "1.0.0",
+	"description": "Enhanced Auto Note Mover with multi-tag support and batch operations.",
 	"main": "main.js",
 	"scripts": {
 		"dev": "node esbuild.config.mjs",
