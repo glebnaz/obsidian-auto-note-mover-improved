@@ -51,7 +51,7 @@ export const fileMove = async (app: App, settingFolder: string, fileFullName: st
 	}
 	// Move file
 	await app.fileManager.renameFile(file, newPath);
-	console.log(`[Auto Note Mover] Moved the note "${fileFullName}" to the "${settingFolder}".`);
+	console.debug(`[Auto Note Mover] Moved the note "${fileFullName}" to the "${settingFolder}".`);
 	new Notice(`[Auto Note Mover]\nMoved the note "${fileFullName}"\nto the "${settingFolder}".`);
 };
 

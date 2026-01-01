@@ -1,5 +1,5 @@
 import AutoNoteMover from 'main';
-import { App, Notice, PluginSettingTab, Setting, ButtonComponent } from 'obsidian';
+import { App, PluginSettingTab, Setting, ButtonComponent } from 'obsidian';
 
 import { FolderSuggest } from 'suggests/file-suggest';
 import { TagSuggest } from 'suggests/tag-suggest';
@@ -72,7 +72,7 @@ export class AutoNoteMoverSettingTab extends PluginSettingTab {
 	}
 
 	add_auto_note_mover_setting(): void {
-		this.containerEl.createEl('h2', { text: 'Auto Note Mover – Multi Tags' });
+		new Setting(this.containerEl).setName('Auto Note Mover – Multi tags').setHeading();
 
 		const descEl = document.createDocumentFragment();
 
@@ -104,7 +104,7 @@ export class AutoNoteMoverSettingTab extends PluginSettingTab {
 					.setValue(this.plugin.settings.trigger_auto_manual)
 					.onChange((value: string) => {
 						this.plugin.settings.trigger_auto_manual = value;
-						this.plugin.saveData(this.plugin.settings);
+						void this.plugin.saveData(this.plugin.settings);
 						this.display();
 					})
 			);
@@ -207,11 +207,11 @@ export class AutoNoteMoverSettingTab extends PluginSettingTab {
 			'This takes precedence over the notes movement rules.'
 		);
 		new Setting(this.containerEl)
-			.setName('Add Excluded Folder')
+			.setName('Add excluded folder')
 			.setDesc(excludedFolderDesc)
 			.addButton((button: ButtonComponent) => {
 				button
-					.setTooltip('Add Excluded Folders')
+					.setTooltip('Add excluded folders')
 					.setButtonText('+')
 					.setCta()
 					.onClick(async () => {
@@ -274,7 +274,7 @@ export class AutoNoteMoverSettingTab extends PluginSettingTab {
 			'Desktop only.'
 		);
 		new Setting(this.containerEl)
-			.setName('Status Bar Trigger Indicator')
+			.setName('Status bar trigger indicator')
 			.setDesc(statusBarTriggerIndicatorDesc)
 			.addToggle((toggle) => {
 				toggle.setValue(this.plugin.settings.statusBar_trigger_indicator).onChange(async (value) => {
@@ -288,13 +288,9 @@ export class AutoNoteMoverSettingTab extends PluginSettingTab {
 	private renderRule(rule: FolderRule, ruleIndex: number): void {
 		// Create a container for the rule
 		const ruleContainer = this.containerEl.createDiv({ cls: 'auto-note-mover-rule' });
-		ruleContainer.style.border = '1px solid var(--background-modifier-border)';
-		ruleContainer.style.borderRadius = '8px';
-		ruleContainer.style.padding = '12px';
-		ruleContainer.style.marginBottom = '12px';
 
 		// Header with rule number and controls
-		const headerSetting = new Setting(ruleContainer)
+		new Setting(ruleContainer)
 			.setName(`Rule ${ruleIndex + 1}`)
 			.addExtraButton((cb) => {
 				cb.setIcon('up-chevron-glyph')
@@ -342,8 +338,8 @@ export class AutoNoteMoverSettingTab extends PluginSettingTab {
 			.setName('Tag match mode')
 			.setDesc('How tags will be combined for this rule')
 			.addDropdown((dd) => {
-				dd.addOption('any', 'Match any tag (OR)');
-				dd.addOption('all', 'Match all tags (AND)');
+				dd.addOption('any', 'Match any tag (or)');
+				dd.addOption('all', 'Match all tags (and)');
 
 				dd.setValue(rule.tagMatchMode ?? 'any');
 
@@ -354,8 +350,7 @@ export class AutoNoteMoverSettingTab extends PluginSettingTab {
 			});
 
 		// Tags section header
-		const tagsHeaderEl = ruleContainer.createDiv();
-		tagsHeaderEl.style.marginTop = '8px';
+		const tagsHeaderEl = ruleContainer.createDiv({ cls: 'auto-note-mover-tags-header' });
 		new Setting(tagsHeaderEl).setName('Tags').setDesc('Add one or more tags for this rule');
 
 		// Render each tag with remove button

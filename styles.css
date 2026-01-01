@@ -1,0 +1,10 @@
+.auto-note-mover-rule {
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 8px;
+	padding: 12px;
+	margin-bottom: 12px;
+}
+
+.auto-note-mover-tags-header {
+	margin-top: 8px;
+}

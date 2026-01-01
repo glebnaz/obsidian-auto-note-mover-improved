@@ -1,25 +1,20 @@
-import { App, Plugin, TFile, getAllTags, CachedMetadata, PluginManifest } from 'obsidian';
+import { App, TFile, getAllTags, CachedMetadata } from 'obsidian';
 
 import { TextInputSuggest } from './suggest';
 
-export class GetAllTagsInTheVault extends Plugin {
-	fileArray: TFile[];
-	fileCache: CachedMetadata[];
-	tagArray: string[][];
-	tagArrayJoin: string;
-	tagArraySplit: string[];
-	tagArrayFilter: string[];
-	tagList: string[];
+class GetAllTagsInTheVault {
+	private app: App;
+	private tagList: string[];
 
-	constructor(app: App, manifest: PluginManifest) {
-		super(app, manifest);
-		this.fileArray = this.app.vault.getMarkdownFiles();
-		this.fileCache = this.fileArray.map((value) => this.app.metadataCache.getFileCache(value));
-		this.tagArray = this.fileCache.map((value) => getAllTags(value));
-		this.tagArrayJoin = this.tagArray.join();
-		this.tagArraySplit = this.tagArrayJoin.split(',');
-		this.tagArrayFilter = this.tagArraySplit.filter(Boolean);
-		this.tagList = [...new Set(this.tagArrayFilter)];
+	constructor(app: App) {
+		this.app = app;
+		const fileArray = this.app.vault.getMarkdownFiles();
+		const fileCache = fileArray.map((file: TFile) => this.app.metadataCache.getFileCache(file));
+		const tagArray = fileCache.map((cache: CachedMetadata | null) => (cache ? getAllTags(cache) : []));
+		const tagArrayJoin = tagArray.join();
+		const tagArraySplit = tagArrayJoin.split(',');
+		const tagArrayFilter = tagArraySplit.filter(Boolean);
+		this.tagList = [...new Set(tagArrayFilter)];
 	}
 
 	pull(): string[] {
@@ -28,31 +23,26 @@ export class GetAllTagsInTheVault extends Plugin {
 }
 
 export class TagSuggest extends TextInputSuggest<string> {
-	manifest: PluginManifest;
-	tagList: GetAllTagsInTheVault;
-	tagMatch: string[];
-	lowerCaseInputStr: string;
-
 	getSuggestions(inputStr: string): string[] {
-		this.tagList = new GetAllTagsInTheVault(this.app, this.manifest);
-		this.tagMatch = [];
-		this.lowerCaseInputStr = inputStr.toLowerCase();
+		const tagList = new GetAllTagsInTheVault(this.app);
+		const tagMatch: string[] = [];
+		const lowerCaseInputStr = inputStr.toLowerCase();
 
-		this.tagList.pull().forEach((Tag: string) => {
-			if (Tag.toLowerCase().contains(this.lowerCaseInputStr)) {
-				this.tagMatch.push(Tag);
+		tagList.pull().forEach((tag: string) => {
+			if (tag.toLowerCase().contains(lowerCaseInputStr)) {
+				tagMatch.push(tag);
 			}
 		});
 
-		return this.tagMatch;
+		return tagMatch;
 	}
 
-	renderSuggestion(Tag: string, el: HTMLElement): void {
-		el.setText(Tag);
+	renderSuggestion(tag: string, el: HTMLElement): void {
+		el.setText(tag);
 	}
 
-	selectSuggestion(Tag: string): void {
-		this.inputEl.value = Tag;
+	selectSuggestion(tag: string): void {
+		this.inputEl.value = tag;
 		this.inputEl.trigger('input');
 		this.close();
 	}

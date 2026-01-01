@@ -51,7 +51,11 @@ class FolderSuggestModal extends SuggestModal<TFolder> {
 export default class AutoNoteMover extends Plugin {
 	settings: AutoNoteMoverSettings;
 
-	async onload() {
+	onload(): void {
+		void this.onloadAsync();
+	}
+
+	async onloadAsync(): Promise<void> {
 		await this.loadSettings();
 
 		const fileCheck = (file: TAbstractFile, oldPath?: string, caller?: string) => {
@@ -99,7 +103,7 @@ export default class AutoNoteMover extends Plugin {
 				const byTitle = this.matchesTitle(rule, fileName);
 
 				if (byTags || byTitle) {
-					fileMove(this.app, rule.folder, fileFullName, file);
+					void fileMove(this.app, rule.folder, fileFullName, file);
 					break;
 				}
 			}
@@ -148,16 +152,16 @@ export default class AutoNoteMover extends Plugin {
 
 		this.addCommand({
 			id: 'Toggle-Auto-Manual',
-			name: 'Toggle Auto-Manual',
+			name: 'Toggle auto-manual',
 			callback: () => {
 				if (this.settings.trigger_auto_manual === 'Automatic') {
 					this.settings.trigger_auto_manual = 'Manual';
-					this.saveData(this.settings);
-					new Notice('[Auto Note Mover]\nTrigger is Manual.');
+					void this.saveData(this.settings);
+					new Notice('[Auto Note Mover]\nTrigger is manual.');
 				} else if (this.settings.trigger_auto_manual === 'Manual') {
 					this.settings.trigger_auto_manual = 'Automatic';
-					this.saveData(this.settings);
-					new Notice('[Auto Note Mover]\nTrigger is Automatic.');
+					void this.saveData(this.settings);
+					new Notice('[Auto Note Mover]\nTrigger is automatic.');
 				}
 				setIndicator();
 			},
@@ -167,8 +171,8 @@ export default class AutoNoteMover extends Plugin {
 		this.addCommand({
 			id: 'scan-folder-and-move-notes',
 			name: 'Scan folder and move notes',
-			callback: async () => {
-				await this.promptAndScanFolder();
+			callback: () => {
+				this.promptAndScanFolder();
 			},
 		});
 
@@ -176,8 +180,8 @@ export default class AutoNoteMover extends Plugin {
 		this.addCommand({
 			id: 'scan-folder-dry-run',
 			name: 'Scan folder (dry-run)',
-			callback: async () => {
-				await this.promptAndScanFolder(true);
+			callback: () => {
+				this.promptAndScanFolder(true);
 			},
 		});
 
@@ -208,7 +212,7 @@ export default class AutoNoteMover extends Plugin {
 		const newRules: FolderRule[] = [];
 
 		// Migrate from old folder_tag_pattern array
-		const oldPatterns = this.settings.folder_tag_pattern as FolderTagPattern[] | undefined;
+		const oldPatterns = this.settings.folder_tag_pattern;
 		if (Array.isArray(oldPatterns)) {
 			for (const old of oldPatterns) {
 				const tags: string[] = [];
@@ -233,7 +237,7 @@ export default class AutoNoteMover extends Plugin {
 		this.settings.rules = newRules;
 
 		// Save migrated settings
-		this.saveSettings();
+		void this.saveSettings();
 	}
 
 	/**
@@ -291,15 +295,16 @@ export default class AutoNoteMover extends Plugin {
 	/**
 	 * Open folder selection modal and scan selected folder
 	 */
-	private async promptAndScanFolder(dryRun: boolean = false): Promise<void> {
+	private promptAndScanFolder(dryRun: boolean = false): void {
+		const configDir = this.app.vault.configDir;
 		const all = this.app.vault.getAllLoadedFiles();
 
 		const folders = all
 			.filter((f): f is TFolder => f instanceof TFolder)
-			.filter((f) => !f.path.startsWith('.obsidian'));
+			.filter((f) => !f.path.startsWith(configDir));
 
-		new FolderSuggestModal(this.app, folders, async (folder) => {
-			await this.scanFolderAndMove(folder, dryRun);
+		new FolderSuggestModal(this.app, folders, (folder) => {
+			void this.scanFolderAndMove(folder, dryRun);
 		}).open();
 	}
 
@@ -308,14 +313,15 @@ export default class AutoNoteMover extends Plugin {
 	 */
 	private getMarkdownFilesRecursively(folder: TFolder): TFile[] {
 		const result: TFile[] = [];
+		const configDir = this.app.vault.configDir;
 
 		for (const child of folder.children) {
 			if (child instanceof TFile) {
-				if (child.extension === 'md' && !child.path.startsWith('.obsidian')) {
+				if (child.extension === 'md' && !child.path.startsWith(configDir)) {
 					result.push(child);
 				}
 			} else if (child instanceof TFolder) {
-				if (!child.path.startsWith('.obsidian')) {
+				if (!child.path.startsWith(configDir)) {
 					result.push(...this.getMarkdownFilesRecursively(child));
 				}
 			}
@@ -365,7 +371,7 @@ export default class AutoNoteMover extends Plugin {
 				`[Auto Note Mover] Dry-run complete:\nScanned: ${scanned}\nWould move: ${moved}\nNo match: ${skipped}`
 			);
 			if (wouldMove.length > 0) {
-				console.log('[Auto Note Mover] Dry-run - would move:', wouldMove);
+				console.debug('[Auto Note Mover] Dry-run - would move:', wouldMove);
 			}
 		} else {
 			new Notice(`[Auto Note Mover] Scan complete:\nScanned: ${scanned}\nMoved: ${moved}\nSkipped: ${skipped}`);
@@ -380,8 +386,9 @@ export default class AutoNoteMover extends Plugin {
 		file: TFile,
 		dryRun: boolean = false
 	): Promise<{ matched: boolean; targetFolder?: string }> {
-		// Skip .obsidian files
-		if (file.path.startsWith('.obsidian')) {
+		// Skip config folder files
+		const configDir = this.app.vault.configDir;
+		if (file.path.startsWith(configDir)) {
 			return { matched: false };
 		}
 
