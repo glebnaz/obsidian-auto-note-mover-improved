@@ -15,7 +15,6 @@ import {
 	AutoNoteMoverSettings,
 	AutoNoteMoverSettingTab,
 	FolderRule,
-	FolderTagPattern,
 } from 'settings/settings';
 import { fileMove, getTriggerIndicator, isFmDisable } from 'utils/Utils';
 
@@ -130,6 +129,7 @@ export default class AutoNoteMover extends Plugin {
 
 		const moveNoteCommand = (view: MarkdownView) => {
 			if (isFmDisable(this.app.metadataCache.getFileCache(view.file))) {
+				// eslint-disable-next-line obsidianmd/ui/sentence-case -- plugin name is a proper noun
 				new Notice('Auto Note Mover is disabled in the frontmatter.');
 				return;
 			}
@@ -157,10 +157,12 @@ export default class AutoNoteMover extends Plugin {
 				if (this.settings.trigger_auto_manual === 'Automatic') {
 					this.settings.trigger_auto_manual = 'Manual';
 					void this.saveData(this.settings);
+					// eslint-disable-next-line obsidianmd/ui/sentence-case -- plugin name is a proper noun
 					new Notice('[Auto Note Mover]\nTrigger is manual.');
 				} else if (this.settings.trigger_auto_manual === 'Manual') {
 					this.settings.trigger_auto_manual = 'Automatic';
 					void this.saveData(this.settings);
+					// eslint-disable-next-line obsidianmd/ui/sentence-case -- plugin name is a proper noun
 					new Notice('[Auto Note Mover]\nTrigger is automatic.');
 				}
 				setIndicator();

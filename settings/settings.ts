@@ -72,13 +72,16 @@ export class AutoNoteMoverSettingTab extends PluginSettingTab {
 	}
 
 	add_auto_note_mover_setting(): void {
+		// eslint-disable-next-line obsidianmd/ui/sentence-case -- plugin name is a proper noun
 		new Setting(this.containerEl).setName('Auto Note Mover – Multi tags').setHeading();
 
 		const descEl = document.createDocumentFragment();
 
+		/* eslint-disable obsidianmd/ui/sentence-case -- plugin name is a proper noun */
 		new Setting(this.containerEl).setDesc(
 			'Auto Note Mover will automatically move the active notes to their respective folders according to the rules.'
 		);
+		/* eslint-enable obsidianmd/ui/sentence-case */
 
 		const triggerDesc = document.createDocumentFragment();
 		triggerDesc.append(
@@ -143,6 +146,7 @@ export class AutoNoteMoverSettingTab extends PluginSettingTab {
 			'Use "Match any tag" (OR) or "Match all tags" (AND).',
 			descEl.createEl('br'),
 			'3. The rules are checked in order from the top. The notes will be moved to the folder with the ',
+			// eslint-disable-next-line obsidianmd/ui/sentence-case -- intentionally lowercase as continuation of sentence
 			descEl.createEl('strong', { text: 'first matching rule.' }),
 			descEl.createEl('br'),
 			'Tag: Be sure to add a',
@@ -157,6 +161,7 @@ export class AutoNoteMoverSettingTab extends PluginSettingTab {
 			'1. Attached files will not be moved, but they will still appear in the note.',
 			descEl.createEl('br'),
 			'2. Auto Note Mover will not move notes that have "',
+			// eslint-disable-next-line obsidianmd/ui/sentence-case -- exact frontmatter key that users must type
 			descEl.createEl('strong', { text: 'AutoNoteMover: disable' }),
 			'" in the frontmatter.'
 		);
@@ -392,7 +397,8 @@ export class AutoNoteMoverSettingTab extends PluginSettingTab {
 			.setName('Title pattern')
 			.setDesc('Regular expression for note title (optional)')
 			.addText((text) => {
-				text.setPlaceholder('.*Meeting.*')
+				// eslint-disable-next-line obsidianmd/ui/sentence-case -- regex example placeholder
+				text.setPlaceholder('e.g. .*meeting.*')
 					.setValue(rule.titlePattern ?? '')
 					.onChange(async (value) => {
 						rule.titlePattern = value.trim() || undefined;
