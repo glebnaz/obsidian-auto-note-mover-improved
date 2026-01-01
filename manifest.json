@@ -1,7 +1,7 @@
 {
 	"id": "auto-mover-x",
 	"name": "Auto Mover X",
-	"version": "1.0.0",
+	"version": "1.0.1",
 	"minAppVersion": "1.5.0",
 	"description": "Enhanced Auto Note Mover with multi-tag support and batch operations.",
 	"author": "glebnaz",
